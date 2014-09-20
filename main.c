@@ -33,7 +33,11 @@ UserCommand parse_cmd(char * cmd){
 				break;
 			}
 			i++;
-		}	
+		}
+		//if cmd ends with spaces/tabs, then the last arg is "\n", so we have to decrement argc
+		if(strcmp(last_arg, "") == 0){
+			argc--;
+		}
 	}//end of if
 	//must be terminated by NULL pointer, as execvp requires
 	args[argc] = NULL;
@@ -65,6 +69,7 @@ int main(int argc, char *argv[]){
 	//main loop
 	bool quit = false;
 	char *cmd;
+	char *cwd;
 	while(!quit){
 		//print prompt
 		printf("myshell>");
@@ -79,14 +84,49 @@ int main(int argc, char *argv[]){
 			exit(1);
 		}
 		//parse command
+		//handle exit
 		if(strcmp(cmd, "exit\n") == 0){
 			free(cmd);
 			exit(0);
 		}
 
 		UserCommand uc = parse_cmd(cmd);
-		//printf("%d\n", uc.num_args);
-		piro_exec(uc.args);
+		if(uc.num_args == 0){
+			fprintf(stderr, "Error!\n");
+		}
+		//cd
+		else if(strcmp(uc.args[0], "cd") == 0){
+			//fprintf(stdout, "%d\n", uc.num_args);
+			//fprintf(stdout, "%s bla", uc.args[1]);
+			if(uc.num_args == 1){
+				if(chdir(getenv("HOME")) == -1){
+					fprintf(stderr, "Error!\n");
+				}
+			}else if(uc.num_args == 2){
+				if(chdir(uc.args[1]) == -1){
+					fprintf(stderr, "Error!\n");
+				}
+			}else{
+				fprintf(stderr, "Error!\n");
+			}
+			
+		}
+		//pwd
+		else if (strcmp(uc.args[0], "pwd") == 0){
+			//print current working dir
+			cwd = (char *)malloc(sizeof(char) * MAX_CMD_LEN);
+			if(cwd == NULL){
+				fprintf(stderr, "Error!\n");
+			}else if(getcwd(cwd, MAX_CMD_LEN) == NULL){
+				fprintf(stderr, "Error!\n");
+			}else{
+				fprintf(stdout, "%s\n", cwd);
+			}
+
+		}else{
+			piro_exec(uc.args);
+		}
+		
 		if(cmd){
 			free(cmd);
 		}
