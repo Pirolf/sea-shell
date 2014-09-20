@@ -124,6 +124,8 @@ int main(int argc, char *argv[]){
 			}
 
 		}else{
+			//check for >, >>, |
+			
 			piro_exec(uc.args);
 		}
 		
