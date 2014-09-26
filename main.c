@@ -2,14 +2,18 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <fcntl.h> 
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 
 static int MAX_CMD_LEN = 1024;
-
+static int OVERWRITE = 1;
+static int APPEND = 2;
+static int PIPE = 3;
 typedef struct{
 	int num_args;
+	int pipe_idx;
 	char ** args;
 } UserCommand;
 
@@ -20,6 +24,9 @@ UserCommand parse_cmd(char * cmd){
 	int argc = 0;
 	int i = 0;
 	while(token != NULL){
+		if(strcmp(token, "|") == 0){
+			uc.pipe_idx = argc;
+		}
 		args[argc] = token;
 		argc ++;
 		token = strtok(NULL, " \t");
@@ -38,14 +45,22 @@ UserCommand parse_cmd(char * cmd){
 		if(strcmp(last_arg, "") == 0){
 			argc--;
 		}
-	}//end of if
+	}//end of 
 	//must be terminated by NULL pointer, as execvp requires
 	args[argc] = NULL;
 	uc.num_args = argc;
 	uc.args = args;
 	return uc;
 }
-bool piro_exec(char * argv[]){
+
+//returns a copy of arr[start..end]
+void subarr (char * arr[], int start, int end, char ** sub){
+	int i;
+	for(i = start; i <= end; i++){
+		sub[i-start] = arr[i]; 
+	}
+}
+bool piro_exec(char * argv[], int argv_len, int flag){
 	pid_t pid;
 	int status;
 	if((pid = fork()) < 0){
@@ -53,6 +68,32 @@ bool piro_exec(char * argv[]){
 		exit(-1);
 	}else if (pid == 0){
 		//child
+		//if <
+		if(flag == OVERWRITE || flag == APPEND){
+			int fw;
+			if (flag == OVERWRITE){
+				fw = open(argv[argv_len - 1], O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
+			}else{
+				fw = open(argv[argv_len - 1], O_WRONLY | O_APPEND  | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
+			}
+			if(fw < 0){
+				fprintf(stderr, "Error!\n");
+				exit(-1);
+			}
+			if(dup2(fw, 1) < 0){
+				fprintf(stderr, "Error!\n");
+				exit(-1);
+			}
+			close(fw);
+			//argv[0..-3]
+			char *args[argv_len - 2];
+			subarr(argv, 0, argv_len - 3, args);
+			if(execvp(argv[0], args) < 0){
+				//execvp failed
+				fprintf(stderr, "Error!\n");
+				exit(-1);
+			}
+		}
 		if(execvp(argv[0], argv) < 0){
 			//execvp failed
 			fprintf(stderr, "Error!\n");
@@ -125,8 +166,18 @@ int main(int argc, char *argv[]){
 
 		}else{
 			//check for >, >>, |
-			
-			piro_exec(uc.args);
+			int flag = 0;
+			if(uc.num_args >= 3){
+				char * last_but_two = uc.args[uc.num_args - 2];
+				if(strcmp(last_but_two, "<") == 0){
+					flag = 1;
+				}else if (strcmp(last_but_two, "<<") == 0){
+					flag = 2;
+				}else{
+					//check pipes
+				}
+			}
+			piro_exec(uc.args, uc.num_args, flag);
 		}
 		
 		if(cmd){
