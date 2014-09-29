@@ -19,10 +19,12 @@ typedef struct{
 
 UserCommand parse_cmd(char * cmd){
 	UserCommand uc;
+	uc.pipe_idx = -1;
 	char * args[MAX_CMD_LEN + 1];
 	char * token = strtok(cmd, " \t");
 	int argc = 0;
 	int i = 0;
+
 	while(token != NULL){
 		if(strcmp(token, "|") == 0){
 			uc.pipe_idx = argc;
@@ -53,6 +55,53 @@ UserCommand parse_cmd(char * cmd){
 	return uc;
 }
 
+// args1 | args2
+void exec_pipe(UserCommand uc, char * args1[], char * args2[]){
+	int fd[2];
+	int status, status2;
+	pid_t pid, pid2;
+
+	if(pipe(fd) < 0){
+		fprintf(stderr, "Error!\n");
+		exit(-1);
+	}
+
+	if((pid = fork()) < 0  ){
+		fprintf(stderr, "Error!\n");
+		exit(-1);
+	}else if (pid == 0){
+		close(1);       //close normal stdout 
+		// make stdout same as fd[1] 
+		if (dup2(fd[1], 1) < 0) {
+			fprintf(stderr, "Error!\n");
+			exit(-1);
+		}  
+    		close(fd[0]); // we don't need this
+		//piro_exec p1
+    		//pipe(fd);
+    		//pid2 = fork();
+    		if(execvp(uc.args[0], args1) < 0){
+			//execvp failed
+    			fprintf(stderr, "Error!\n");
+			exit(-1);
+    		}
+    	}
+	else {//if (pid2 == 0){
+		//waitpid(pid, &status, 0);
+		//wait(&status2);
+		close(0);    
+		if (dup2(fd[0], 0) < 0) {
+			fprintf(stderr, "Error!\n");
+			exit(-1);
+		}  
+		close(fd[1]);
+
+    		if(execvp(uc.args[uc.pipe_idx + 1], args2) < 0){
+    			fprintf(stderr, "Error!\n");
+    			exit(-1);
+    		}
+    	}
+}
 //returns a copy of arr[start..end]
 void subarr (char * arr[], int start, int end, char ** sub){
 	int i;
@@ -60,15 +109,16 @@ void subarr (char * arr[], int start, int end, char ** sub){
 		sub[i-start] = arr[i]; 
 	}
 }
-bool piro_exec(char * argv[], int argv_len, int flag){
+bool piro_exec(char * argv[], int argv_len, int flag, int pipe_idx){
 	pid_t pid;
 	int status;
+
 	if((pid = fork()) < 0){
 		fprintf(stderr, "Error!\n");
 		exit(-1);
 	}else if (pid == 0){
 		//child
-		//if <
+		//if < or <<
 		if(flag == OVERWRITE || flag == APPEND){
 			int fw;
 			if (flag == OVERWRITE){
@@ -76,26 +126,28 @@ bool piro_exec(char * argv[], int argv_len, int flag){
 			}else{
 				fw = open(argv[argv_len - 1], O_WRONLY | O_APPEND  | O_CREAT, S_IRUSR | S_IRGRP | S_IWGRP | S_IWUSR);
 			}
+
 			if(fw < 0){
-				fprintf(stderr, "Error!\n");
+				fprintf(stderr, "fw Error!\n");
 				exit(-1);
 			}
 			if(dup2(fw, 1) < 0){
-				fprintf(stderr, "Error!\n");
+				fprintf(stderr, "dup Error!\n");
 				exit(-1);
 			}
-			close(fw);
+			//close(fw);
 			//argv[0..-3]
-			char *args[argv_len - 2];
+			char *args[argv_len - 1];
 			subarr(argv, 0, argv_len - 3, args);
+			args[argv_len - 2] = NULL;
+
 			if(execvp(argv[0], args) < 0){
 				//execvp failed
-				fprintf(stderr, "Error!\n");
+				fprintf(stderr, "exec 1 Error!\n");
 				exit(-1);
 			}
 		}
-		if(execvp(argv[0], argv) < 0){
-			//execvp failed
+		else if(execvp(argv[0], argv) < 0){
 			fprintf(stderr, "Error!\n");
 			exit(-1);
 		}
@@ -137,8 +189,6 @@ int main(int argc, char *argv[]){
 		}
 		//cd
 		else if(strcmp(uc.args[0], "cd") == 0){
-			//fprintf(stdout, "%d\n", uc.num_args);
-			//fprintf(stdout, "%s bla", uc.args[1]);
 			if(uc.num_args == 1){
 				if(chdir(getenv("HOME")) == -1){
 					fprintf(stderr, "Error!\n");
@@ -164,20 +214,45 @@ int main(int argc, char *argv[]){
 				fprintf(stdout, "%s\n", cwd);
 			}
 
-		}else{
+		}
+		else{
 			//check for >, >>, |
 			int flag = 0;
 			if(uc.num_args >= 3){
 				char * last_but_two = uc.args[uc.num_args - 2];
 				if(strcmp(last_but_two, "<") == 0){
-					flag = 1;
+					flag = OVERWRITE;
 				}else if (strcmp(last_but_two, "<<") == 0){
-					flag = 2;
-				}else{
-					//check pipes
+					flag = APPEND;
+				}else if (uc.pipe_idx > 0){
+					flag = PIPE;
 				}
 			}
-			piro_exec(uc.args, uc.num_args, flag);
+			
+			if(flag == PIPE){
+				char *args1[uc.pipe_idx + 1];
+				char *args2[uc.num_args - uc.pipe_idx];
+
+				subarr(uc.args, 0, uc.pipe_idx - 1, args1);
+				args1[uc.pipe_idx] = NULL;
+
+				subarr(uc.args, uc.pipe_idx + 1,  uc.num_args - 1, args2);
+				args2[uc.num_args - uc.pipe_idx - 1] = NULL;
+
+				//set up pipe
+				int pid, status;
+				if((pid = fork()) == 0){
+					exec_pipe(uc, args1, args2);
+				}else{
+					wait(&status);
+				}
+				
+
+			}//end if
+			else{
+				piro_exec(uc.args, uc.num_args, flag, uc.pipe_idx);
+			}
+
 		}
 		
 		if(cmd){
