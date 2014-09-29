@@ -11,6 +11,7 @@ static int MAX_CMD_LEN = 1024;
 static int OVERWRITE = 1;
 static int APPEND = 2;
 static int PIPE = 3;
+
 typedef struct{
 	int num_args;
 	int pipe_idx;
@@ -58,8 +59,7 @@ UserCommand parse_cmd(char * cmd){
 // args1 | args2
 void exec_pipe(UserCommand uc, char * args1[], char * args2[]){
 	int fd[2];
-	int status, status2;
-	pid_t pid, pid2;
+	pid_t pid;
 
 	if(pipe(fd) < 0){
 		fprintf(stderr, "Error!\n");
@@ -77,18 +77,14 @@ void exec_pipe(UserCommand uc, char * args1[], char * args2[]){
 			exit(-1);
 		}  
     		close(fd[0]); // we don't need this
-		//piro_exec p1
-    		//pipe(fd);
-    		//pid2 = fork();
+
     		if(execvp(uc.args[0], args1) < 0){
 			//execvp failed
     			fprintf(stderr, "Error!\n");
 			exit(-1);
     		}
     	}
-	else {//if (pid2 == 0){
-		//waitpid(pid, &status, 0);
-		//wait(&status2);
+	else {
 		close(0);    
 		if (dup2(fd[0], 0) < 0) {
 			fprintf(stderr, "Error!\n");
