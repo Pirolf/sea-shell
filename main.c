@@ -124,11 +124,11 @@ bool piro_exec(char * argv[], int argv_len, int flag, int pipe_idx){
 			}
 
 			if(fw < 0){
-				fprintf(stderr, "fw Error!\n");
+				fprintf(stderr, "Error!\n");
 				exit(-1);
 			}
 			if(dup2(fw, 1) < 0){
-				fprintf(stderr, "dup Error!\n");
+				fprintf(stderr, "Error!\n");
 				exit(-1);
 			}
 			//close(fw);
@@ -139,7 +139,7 @@ bool piro_exec(char * argv[], int argv_len, int flag, int pipe_idx){
 
 			if(execvp(argv[0], args) < 0){
 				//execvp failed
-				fprintf(stderr, "exec 1 Error!\n");
+				fprintf(stderr, "Error!\n");
 				exit(-1);
 			}
 		}
